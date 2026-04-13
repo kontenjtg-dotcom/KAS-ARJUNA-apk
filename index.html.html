@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Kas Pro - Import Excel & JSON</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #eef2f7; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 650px; }
+        h2, h3 { text-align: center; color: #333; margin: 5px 0; }
+        
+        .saldo-utama { background: #1a73e8; color: white; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 15px; }
+        .saldo-box { font-size: 24px; font-weight: bold; }
+        
+        .menu-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+        .btn-action { padding: 10px 5px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 10px; color: white; text-align: center; }
+        .bg-excel { background: #1d6f42; }
+        .bg-json { background: #5f6368; }
+        .bg-import { background: #8e44ad; }
+
+        .filter-section { background: #fffde7; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #ffe082; }
+        .dashboard-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .stat-card { background: #f8f9fa; padding: 8px; border-radius: 8px; border-left: 4px solid #ddd; }
+        .stat-label { font-size: 9px; color: #666; text-transform: uppercase; font-weight: bold; }
+        .stat-value { font-size: 12px; font-weight: bold; color: #333; }
+
+        label { font-size: 11px; color: #666; font-weight: bold; display: block; margin-top: 8px; }
+        input, select, button { width: 100%; padding: 10px; margin: 4px 0; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 13px; }
+        
+        .row { display: flex; gap: 8px; }
+        .btn-utama { background: #1a73e8; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 8px; }
+        
+        table { width: 100%; margin-top: 15px; border-collapse: collapse; font-size: 12px; }
+        th { background: #f8f9fa; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; }
+        td { padding: 10px; border-bottom: 1px solid #eee; }
+        
+        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee; }
+        .btn-page { width: auto; padding: 5px 12px; background: #fff; border: 1px solid #1a73e8; color: #1a73e8; cursor: pointer; border-radius: 4px; }
+        .btn-page:disabled { border-color: #ccc; color: #ccc; cursor: not-allowed; }
+
+        .badge { background: #e1f5fe; color: #01579b; padding: 2px 6px; border-radius: 4px; font-size: 9px; }
+        .plus { color: #27ae60; font-weight: bold; }
+        .minus { color: #e74c3c; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Kas & Sampah Pro</h2>
+
+    <div class="menu-grid">
+        <button class="btn-action bg-excel" onclick="exportToExcel()">📊 EXCEL</button>
+        <button class="btn-action bg-json" onclick="exportFullData()">💾 BACKUP</button>
+        <button class="btn-action bg-import" onclick="document.getElementById('fileInput').click()">📥 IMPORT FILE</button>
+        <input type="file" id="fileInput" style="display:none" accept=".json, .xlsx, .xls" onchange="handleImport(event)">
+    </div>
+
+    <div class="saldo-utama">
+        <div style="font-size: 11px; opacity: 0.9;">Total Saldo Berjalan</div>
+        <div class="saldo-box" id="display-saldo-all">Rp 0</div>
+    </div>
+
+    <div class="filter-section">
+        <div class="row">
+            <div style="flex:2">
+                <label>Lihat Bulan:</label>
+                <input type="month" id="filter-bulan" onchange="currentPage=1; render();">
+            </div>
+            <div style="flex:1">
+                <label>&nbsp;</label>
+                <button onclick="aturSaldoAwal()" style="background: #f39c12; color:white; border:none; height:37px; font-size:11px;">SET AWAL</button>
+            </div>
+        </div>
+        <div class="dashboard-detail">
+            <div class="stat-card" style="border-left-color: #1a73e8;"><div class="stat-label">Saldo Awal</div><div class="stat-value" id="stat-awal-bulan">0</div></div>
+            <div class="stat-card" style="border-left-color: #f39c12;"><div class="stat-label">Sisa Akhir</div><div class="stat-value" id="stat-akhir-bulan">0</div></div>
+        </div>
+    </div>
+
+    <hr>
+    <h3 id="form-title">Input Transaksi</h3>
+    <div class="row">
+        <div style="flex: 1;"><label>Tanggal</label><input type="date" id="tgl"></div>
+        <div style="flex: 2;"><label>Keterangan</label><input type="text" id="ket" placeholder="Detail..."></div>
+    </div>
+    <div class="row">
+        <div style="flex: 1;"><label>Nominal</label><input type="number" id="nom" placeholder="0"></div>
+        <div style="flex: 1;">
+            <label>Kategori</label>
+            <select id="klasifikasi">
+                <option value="Kas">Kas</option>
+                <option value="Sampah">Sampah</option>
+                <option value="Lainnya">Lainnya</option>
+            </select>
+        </div>
+    </div>
+    <div class="row">
+        <div style="flex:1">
+            <label>Jenis</label>
+            <select id="tipe">
+                <option value="in">Masuk (+)</option>
+                <option value="out">Keluar (-)</option>
+            </select>
+        </div>
+        <div style="flex:1; display:flex; align-items:flex-end;">
+            <button class="btn-utama" id="btn-simpan" onclick="simpanTransaksi()">Simpan</button>
+            <div id="edit-actions" style="display: none; gap: 5px; width:100%">
+                <button class="btn-utama" style="background: #f39c12;" onclick="updateTransaksi()">Update</button>
+                <button class="btn-utama" style="background: #999;" onclick="batalEdit()">Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <table id="tabel-kas">
+        <thead>
+            <tr>
+                <th>Detail</th>
+                <th>Kat</th>
+                <th>Jumlah</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody id="tabel-body"></tbody>
+    </table>
+
+    <div class="pagination">
+        <button class="btn-page" id="btn-prev" onclick="changePage(-1)">◀</button>
+        <span id="page-info" style="font-size:11px; color:#666;">Hal 1 / 1</span>
+        <button class="btn-page" id="btn-next" onclick="changePage(1)">▶</button>
+    </div>
+</div>
+
+<script>
+    let listTransaksi = JSON.parse(localStorage.getItem('kas_v12_data')) || [];
+    let saldoBulanan = JSON.parse(localStorage.getItem('kas_v12_awal_bulanan')) || {};
+    let editIndex = -1;
+    let currentPage = 1;
+    const itemsPerPage = 10;
+
+    const now = new Date();
+    document.getElementById('tgl').valueAsDate = now;
+    document.getElementById('filter-bulan').value = now.toISOString().substring(0, 7);
+
+    function render() {
+        const tbody = document.getElementById('tabel-body');
+        const m = document.getElementById('filter-bulan').value;
+        
+        let sAwal = saldoBulanan[m] || 0;
+        let filtered = listTransaksi.filter(x => x.tgl.substring(0, 7) === m);
+        filtered.sort((a,b) => new Date(b.tgl) - new Date(a.tgl));
+
+        let tIn = 0, tOut = 0;
+        filtered.forEach(x => x.tipe === 'in' ? tIn += x.nom : tOut += x.nom);
+
+        document.getElementById('stat-awal-bulan').innerText = "Rp " + sAwal.toLocaleString('id-ID');
+        document.getElementById('stat-akhir-bulan').innerText = "Rp " + (sAwal + tIn - tOut).toLocaleString('id-ID');
+
+        let totalGlobal = 0;
+        listTransaksi.forEach(x => x.tipe === 'in' ? totalGlobal += x.nom : totalGlobal -= x.nom);
+        const keys = Object.keys(saldoBulanan).sort();
+        if(keys.length > 0) totalGlobal += saldoBulanan[keys[0]];
+        document.getElementById('display-saldo-all').innerText = "Rp " + totalGlobal.toLocaleString('id-ID');
+
+        const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+        const start = (currentPage - 1) * itemsPerPage;
+        const pagedItems = filtered.slice(start, start + itemsPerPage);
+
+        document.getElementById('page-info').innerText = `Hal ${currentPage} / ${totalPages}`;
+        document.getElementById('btn-prev').disabled = currentPage === 1;
+        document.getElementById('btn-next').disabled = currentPage === totalPages;
+
+        tbody.innerHTML = pagedItems.map((x) => {
+            const oIdx = listTransaksi.indexOf(x);
+            return `<tr>
+                <td><small>${x.tgl}</small><br><strong>${x.ket}</strong></td>
+                <td><span class="badge">${x.klasifikasi}</span></td>
+                <td class="${x.tipe === 'in' ? 'plus' : 'minus'}">${x.nom.toLocaleString('id-ID')}</td>
+                <td>
+                    <div style="display:flex; gap:3px;">
+                        <button onclick="persiapanEdit(${oIdx})" style="border:none; background:#f39c12; color:white; padding:4px; border-radius:3px; cursor:pointer;">✎</button>
+                        <button onclick="hapus(${oIdx})" style="border:none; background:#e74c3c; color:white; padding:4px; border-radius:3px; cursor:pointer;">✕</button>
+                    </div>
+                </td>
+            </tr>`
+        }).join('');
+
+        localStorage.setItem('kas_v12_data', JSON.stringify(listTransaksi));
+        localStorage.setItem('kas_v12_awal_bulanan', JSON.stringify(saldoBulanan));
+    }
+
+    // --- FUNGSI IMPORT (EXCEL & JSON) ---
+    function handleImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        const extension = file.name.split('.').pop().toLowerCase();
+
+        reader.onload = function(e) {
+            if (extension === 'json') {
+                processJSON(e.target.result);
+            } else {
+                processExcel(e.target.result);
+            }
+        };
+
+        if (extension === 'json') {
+            reader.readAsText(file);
+        } else {
+            reader.readAsArrayBuffer(file);
+        }
+    }
+
+    function processJSON(data) {
+        try {
+            const imported = JSON.parse(data);
+            if (imported.transaksi) {
+                listTransaksi = imported.transaksi;
+                saldoBulanan = imported.saldo || {};
+                finishImport();
+            }
+        } catch(e) { alert("JSON Rusak!"); }
+    }
+
+    function processExcel(data) {
+        try {
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+            
+            // Konversi dari format Excel ke format aplikasi
+            const mapped = json.map(row => ({
+                tgl: row.Tanggal || row.tgl || new Date().toISOString().split('T')[0],
+                ket: row.Keterangan || row.ket || "-",
+                nom: parseInt(row.Nominal || row.nom || 0),
+                tipe: (row.Jenis || row.tipe || "in").toLowerCase().includes('keluar') ? 'out' : 'in',
+                klasifikasi: row.Kategori || row.klasifikasi || "Kas"
+            }));
+
+            if(confirm(`Impor ${mapped.length} data dari Excel?`)) {
+                listTransaksi = [...listTransaksi, ...mapped];
+                finishImport();
+            }
+        } catch(e) { alert("Gagal membaca Excel!"); }
+    }
+
+    function finishImport() {
+        currentPage = 1;
+        render();
+        alert("✅ Data berhasil masuk!");
+        document.getElementById('fileInput').value = '';
+    }
+
+    // --- FUNGSI LAINNYA ---
+    function exportFullData() {
+        const blob = new Blob([JSON.stringify({transaksi: listTransaksi, saldo: saldoBulanan})], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `backup_kas.json`; a.click();
+    }
+
+    function exportToExcel() {
+        const m = document.getElementById('filter-bulan').value;
+        const filtered = listTransaksi.filter(x => x.tgl.substring(0, 7) === m);
+        if(filtered.length === 0) return alert("Kosong!");
+        const ws = XLSX.utils.json_to_sheet(filtered);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Laporan");
+        XLSX.writeFile(wb, `Kas_${m}.xlsx`);
+    }
+
+    function changePage(dir) { currentPage += dir; render(); }
+    function simpanTransaksi() {
+        const tgl = document.getElementById('tgl').value, ket = document.getElementById('ket').value, nom = parseInt(document.getElementById('nom').value);
+        if (!tgl || !ket || !nom) return alert("Lengkapi!");
+        listTransaksi.push({ tgl, ket, nom, tipe: document.getElementById('tipe').value, klasifikasi: document.getElementById('klasifikasi').value });
+        resetForm(); render();
+    }
+    function persiapanEdit(idx) {
+        editIndex = idx; const item = listTransaksi[idx];
+        document.getElementById('tgl').value = item.tgl; document.getElementById('ket').value = item.ket;
+        document.getElementById('nom').value = item.nom; document.getElementById('tipe').value = item.tipe;
+        document.getElementById('klasifikasi').value = item.klasifikasi;
+        document.getElementById('btn-simpan').style.display = 'none'; document.getElementById('edit-actions').style.display = 'flex';
+    }
+    function updateTransaksi() {
+        listTransaksi[editIndex] = { tgl: document.getElementById('tgl').value, ket: document.getElementById('ket').value, nom: parseInt(document.getElementById('nom').value), tipe: document.getElementById('tipe').value, klasifikasi: document.getElementById('klasifikasi').value };
+        batalEdit(); render();
+    }
+    function batalEdit() { editIndex = -1; resetForm(); document.getElementById('btn-simpan').style.display = 'block'; document.getElementById('edit-actions').style.display = 'none'; }
+    function resetForm() { document.getElementById('ket').value = ''; document.getElementById('nom').value = ''; }
+    function hapus(i) { if(confirm("Hapus?")) { listTransaksi.splice(i,1); render(); } }
+    function aturSaldoAwal() {
+        const m = document.getElementById('filter-bulan').value;
+        const n = prompt("Saldo Awal:", saldoBulanan[m] || 0);
+        if (n !== null) { saldoBulanan[m] = parseInt(n) || 0; render(); }
+    }
+
+    render();
+</script>
+</body>
+</html>
